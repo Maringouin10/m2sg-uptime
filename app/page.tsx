@@ -1,4 +1,5 @@
 import AutoRefresh from "./AutoRefresh";
+import { databaseUrl } from "@/lib/db";
 import { TIMEZONE } from "@/lib/monitors";
 import { getDailyBars, getStatuses, overall, type DayBar, type Uptime } from "@/lib/stats";
 
@@ -59,6 +60,27 @@ function barTitle(b: DayBar): string {
 }
 
 export default async function Page() {
+  if (!databaseUrl()) {
+    return (
+      <main>
+        <header>
+          <h1>M2SG</h1>
+          <p className="sub">Statut des services</p>
+        </header>
+        <div className="banner unknown">
+          <span className="dot" />
+          Base de données non configurée
+        </div>
+        <section className="card">
+          <p style={{ margin: 0 }}>
+            La variable d&apos;environnement <code>DATABASE_URL</code> est absente. Dans Vercel :
+            Storage → Neon → connecter la base à ce projet (environnement Production), puis
+            redéployer.
+          </p>
+        </section>
+      </main>
+    );
+  }
   const [statuses, bars] = await Promise.all([getStatuses(), getDailyBars(90)]);
   const global = overall(statuses);
 

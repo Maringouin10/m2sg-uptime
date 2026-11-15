@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
-import { ensureSchema } from "@/lib/db";
+import { databaseUrl, ensureSchema } from "@/lib/db";
 import { purgeOldChecks, runCheck } from "@/lib/check";
 import { DOWN_RECHECK_DELAY_MS, MONITORS } from "@/lib/monitors";
 
@@ -29,6 +29,9 @@ async function handler(req: Request) {
   }
   if (!authorized(req)) return Response.json({ error: "Non autorisé" }, { status: 401 });
 
+  if (!databaseUrl()) {
+    return Response.json({ error: "Base de données non configurée (DATABASE_URL)" }, { status: 503 });
+  }
   await ensureSchema();
   const results = await Promise.all(MONITORS.map((m) => runCheck(m)));
 
