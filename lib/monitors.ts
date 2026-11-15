@@ -5,11 +5,26 @@ export type Monitor = {
   name: string;
   /** URL vérifiée. */
   url: string;
+  /** URL affichée sur la page (par défaut : url). */
+  displayUrl?: string;
+  /**
+   * "http" : simple vérification du code HTTP.
+   * "status-json" : endpoint qui renvoie { status, services: [{ id, name, description, status }] }.
+   */
+  type: "http" | "status-json";
 };
 
+export type State = "up" | "degraded" | "down";
+
 export const MONITORS: Monitor[] = [
-  { id: "website", name: "Site web", url: "https://m2sg.com" },
-  { id: "mail", name: "Mail", url: "https://mail.m2sg.com/healthz" },
+  { id: "website", name: "Site web", url: "https://m2sg.com", type: "http" },
+  {
+    id: "mail",
+    name: "Mail",
+    url: "https://mail.m2sg.com/api/status",
+    displayUrl: "https://mail.m2sg.com",
+    type: "status-json",
+  },
 ];
 
 export const TIMEZONE = "America/Toronto";

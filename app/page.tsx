@@ -7,12 +7,17 @@ export const dynamic = "force-dynamic";
 
 const OVERALL_TEXT = {
   up: "Tous les services fonctionnent",
-  degraded: "Panne partielle",
+  degraded: "Perturbations en cours",
   down: "Panne majeure",
   unknown: "En attente des premières vérifications",
 } as const;
 
-const STATUS_TEXT = { up: "Opérationnel", down: "En panne", unknown: "Inconnu" } as const;
+const STATUS_TEXT = {
+  up: "Opérationnel",
+  degraded: "Dégradé",
+  down: "En panne",
+  unknown: "Inconnu",
+} as const;
 
 function pct(u: Uptime): string {
   if (u.percent === null) return "—";
@@ -132,6 +137,21 @@ export default async function Page() {
             ))}
           </div>
 
+          {s.components && s.components.length > 0 && (
+            <ul className="components">
+              {s.components.map((c) => (
+                <li key={c.id} title={c.description ?? undefined}>
+                  <span className={`cdot ${c.status}`} />
+                  <span className="cname">{c.name}</span>
+                  <span className="cuptime" title="Disponibilité sur 30 jours">
+                    {pct(c.uptime_30d)}
+                  </span>
+                  <span className={`ctext ${c.status}`}>{STATUS_TEXT[c.status]}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <div className="bars" aria-label="Disponibilité des 90 derniers jours">
             {bars[s.id].map((b) => (
               <span key={b.day} className={barClass(b)} title={barTitle(b)} />
@@ -154,7 +174,8 @@ export default async function Page() {
       ))}
 
       <footer>
-        Vérification toutes les 60 s (toutes les 30 s pendant une panne) · API :{" "}
+        Vérification toutes les 60 s (toutes les 30 s pendant une panne) · Sous-services : disponibilité
+        sur 30 jours · API :{" "}
         <a href="/api/status">/api/status</a> · <a href="/api/incidents">/api/incidents</a>
       </footer>
     </main>

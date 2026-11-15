@@ -1,5 +1,5 @@
 import { db, ensureSchema } from "./db";
-import { MONITORS, TIMEZONE, getMonitor, type Monitor } from "./monitors";
+import { MONITORS, TIMEZONE, getMonitor, type Monitor, type State } from "./monitors";
 
 export type Uptime = {
   /** Pourcentage (0-100, arrondi vers le bas à 4 décimales) ou null si aucune donnée. */
@@ -14,6 +14,7 @@ export type UptimeWindows = { "24h": Uptime; "30d": Uptime; "365d": Uptime; all:
 export type LastCheck = {
   checked_at: string;
   ok: boolean;
+  state: State;
   status_code: number | null;
   response_ms: number | null;
   error: string | null;
@@ -29,16 +30,28 @@ export type Incident = {
   error: string | null;
 };
 
+export type Component = {
+  id: string;
+  name: string;
+  description: string | null;
+  /** "unknown" si le sous-service n'a pas été rapporté depuis plus de 5 min. */
+  status: State | "unknown";
+  updated_at: string;
+  uptime_30d: Uptime;
+};
+
 export type MonitorStatus = {
   id: string;
   name: string;
   url: string;
-  status: "up" | "down" | "unknown";
+  status: State | "unknown";
   last_check: LastCheck | null;
   uptime: UptimeWindows;
   /** Premier jour de données (AAAA-MM-JJ, heure de Toronto). */
   since: string | null;
   current_incident: Incident | null;
+  /** Sous-services (présent seulement pour les endpoints de statut détaillé). */
+  components?: Component[];
 };
 
 export type DayBar = { day: string; percent: number | null; down_s: number; checks: number };
@@ -97,9 +110,11 @@ export async function getStatuses(monitors: Monitor[] = MONITORS): Promise<Monit
   const ids = monitors.map((m) => m.id);
   const today = todayLocal();
 
-  const [lasts, raw, daily, open] = await Promise.all([
+  const [lasts, raw, daily, open, comps] = await Promise.all([
     sql<(LastCheck & { monitor_id: string; checked_at: Date })[]>`
-      select distinct on (monitor_id) monitor_id, checked_at, ok, status_code, response_ms, error
+      select distinct on (monitor_id) monitor_id, checked_at, ok,
+        coalesce(state, case when ok then 'up' else 'down' end) as state,
+        status_code, response_ms, error
       from checks where monitor_id = any(${ids})
       order by monitor_id, checked_at desc`,
     sql<{ monitor_id: string; up24: string; t24: string; up30: string; t30: string }[]>`
@@ -121,6 +136,26 @@ export async function getStatuses(monitors: Monitor[] = MONITORS): Promise<Monit
     sql<IncidentRow[]>`
       select id, monitor_id, started_at, ended_at, error from incidents
       where monitor_id = any(${ids}) and ended_at is null`,
+    sql<{
+      monitor_id: string;
+      component_id: string;
+      name: string;
+      description: string | null;
+      state: State;
+      updated_at: Date;
+      stale: boolean;
+      up30: string | null;
+      t30: string | null;
+    }[]>`
+      select c.monitor_id, c.component_id, c.name, c.description, c.state, c.updated_at,
+        c.updated_at < now() - interval '5 minutes' as stale,
+        (select sum(up_s) from component_daily d where d.monitor_id = c.monitor_id
+           and d.component_id = c.component_id and d.day > ${addDays(today, -30)}::date) as up30,
+        (select sum(total_s) from component_daily d where d.monitor_id = c.monitor_id
+           and d.component_id = c.component_id and d.day > ${addDays(today, -30)}::date) as t30
+      from components c
+      where c.monitor_id = any(${ids}) and c.updated_at > now() - interval '1 day'
+      order by c.monitor_id, c.position`,
   ]);
 
   return monitors.map((m) => {
@@ -131,12 +166,13 @@ export async function getStatuses(monitors: Monitor[] = MONITORS): Promise<Monit
     return {
       id: m.id,
       name: m.name,
-      url: m.url,
-      status: !last ? "unknown" : last.ok ? "up" : "down",
+      url: m.displayUrl ?? m.url,
+      status: last ? last.state : "unknown",
       last_check: last
         ? {
             checked_at: last.checked_at.toISOString(),
             ok: last.ok,
+            state: last.state,
             status_code: last.status_code,
             response_ms: last.response_ms,
             error: last.error,
@@ -150,6 +186,20 @@ export async function getStatuses(monitors: Monitor[] = MONITORS): Promise<Monit
       },
       since: dl?.since ?? null,
       current_incident: inc ? toIncident(inc) : null,
+      ...(m.type === "status-json"
+        ? {
+            components: comps
+              .filter((c) => c.monitor_id === m.id)
+              .map((c) => ({
+                id: c.component_id,
+                name: c.name,
+                description: c.description,
+                status: c.stale ? ("unknown" as const) : c.state,
+                updated_at: c.updated_at.toISOString(),
+                uptime_30d: uptime(c.up30, c.t30),
+              })),
+          }
+        : {}),
     } satisfies MonitorStatus;
   });
 }
@@ -197,9 +247,10 @@ export async function getIncidents(opts: { monitor?: string; limit?: number } = 
   return rows.map(toIncident);
 }
 
-export function overall(statuses: MonitorStatus[]): "up" | "down" | "degraded" | "unknown" {
+export function overall(statuses: MonitorStatus[]): "up" | "degraded" | "down" | "unknown" {
   const down = statuses.filter((s) => s.status === "down").length;
-  if (down > 0) return down === statuses.length ? "down" : "degraded";
+  if (down > 0 && down === statuses.length) return "down";
+  if (down > 0 || statuses.some((s) => s.status === "degraded")) return "degraded";
   if (statuses.some((s) => s.status === "unknown")) return "unknown";
   return "up";
 }

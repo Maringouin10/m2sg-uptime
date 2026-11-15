@@ -35,7 +35,7 @@ async function handler(req: Request) {
   await ensureSchema();
   const results = await Promise.all(MONITORS.map((m) => runCheck(m)));
 
-  const down = MONITORS.filter((m) => results.find((r) => r.monitor === m.id && !r.ok));
+  const down = MONITORS.filter((m) => results.find((r) => r.monitor === m.id && r.state === "down"));
   const purge = new Date().getUTCMinutes() === 0;
 
   if (down.length > 0 || purge) {

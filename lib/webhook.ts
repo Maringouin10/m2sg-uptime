@@ -1,17 +1,25 @@
 import { createHmac } from "node:crypto";
+import type { State } from "./monitors";
+
+export type WebhookEventName = "monitor.down" | "monitor.degraded" | "monitor.up";
 
 export type WebhookEvent = {
-  event: "monitor.down" | "monitor.up";
+  event: WebhookEventName;
   timestamp: string;
   monitor: { id: string; name: string; url: string };
+  state: State;
+  previous_state: State | null;
+  /** Panne liée (ouverte par monitor.down, fermée au retour), sinon null. */
   incident: {
     id: number;
     started_at: string;
     ended_at: string | null;
     duration_s: number | null;
     error: string | null;
-  };
+  } | null;
   check: { status_code: number | null; response_ms: number | null; error: string | null };
+  /** Sous-services (endpoints de statut détaillé uniquement). */
+  components?: { id: string; name: string; state: State }[];
 };
 
 export function sign(body: string, secret: string): string {

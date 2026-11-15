@@ -1,9 +1,14 @@
 # M2SG Uptime
 
-Page de statut + API pour **m2sg.com** et **mail.m2sg.com/healthz**, hébergée sur Vercel.
+Page de statut + API pour **m2sg.com** et le **mail** (via `mail.m2sg.com/api/status`), hébergée sur Vercel.
 
 - Vérification toutes les **60 s** ; pendant une panne, une vérif supplémentaire **30 s** plus tard.
-- Panne = erreur réseau, délai > 10 s, ou code HTTP hors 200-399 (redirections suivies).
+- Site web : panne = erreur réseau, délai > 10 s, ou code HTTP hors 200-399 (redirections suivies).
+- Mail : l'état vient du champ `status` de `mail.m2sg.com/api/status` (`up` → opérationnel ;
+  `degraded`/`partial`/`warning`/`maintenance` → dégradé ; autre valeur, erreur réseau, délai
+  ou réponse illisible → panne). Les 8 sous-services sont affichés avec leur état et leur
+  disponibilité sur 30 jours. Leurs messages détaillés ne sont **ni stockés ni affichés**.
+- « Dégradé » compte comme disponible dans l'uptime ; seule une panne fait baisser le pourcentage.
 - Uptime sur **24 h / 30 jours / 1 an / depuis toujours**, pondéré par le temps.
 - Barre des 90 derniers jours (fuseau America/Toronto).
 - API JSON publique en lecture + webhook signé à chaque panne / rétablissement.
@@ -45,7 +50,7 @@ Lecture publique, CORS ouvert (`Access-Control-Allow-Origin: *`), cache 10 s.
 ### `GET /api/status`
 ```json
 {
-  "status": "up",              // up | degraded | down | unknown
+  "status": "up",              // up | degraded | down | unknown (degraded = au moins un service dégradé ou en panne)
   "generated_at": "2026-11-15T22:53:42.766Z",
   "monitors": [ /* voir ci-dessous */ ]
 }
@@ -56,9 +61,9 @@ Lecture publique, CORS ouvert (`Access-Control-Allow-Origin: *`), cache 10 s.
 {
   "id": "mail",
   "name": "Mail",
-  "url": "https://mail.m2sg.com/healthz",
-  "status": "up",              // up | down | unknown
-  "last_check": { "checked_at": "...", "ok": true, "status_code": 200, "response_ms": 120, "error": null },
+  "url": "https://mail.m2sg.com",
+  "status": "up",              // up | degraded | down | unknown
+  "last_check": { "checked_at": "...", "ok": true, "state": "up", "status_code": 200, "response_ms": 120, "error": null },
   "uptime": {
     "24h":  { "percent": 100,     "up_s": 86400, "total_s": 86400, "down_s": 0 },
     "30d":  { "percent": 99.9861, "up_s": ...,   "total_s": ...,   "down_s": 360 },
@@ -66,7 +71,13 @@ Lecture publique, CORS ouvert (`Access-Control-Allow-Origin: *`), cache 10 s.
     "all":  { ... }
   },
   "since": "2026-11-15",
-  "current_incident": null     // ou un incident (voir ci-dessous) si en panne
+  "current_incident": null,    // ou un incident (voir ci-dessous) si en panne
+  "components": [              // mail seulement
+    { "id": "sending", "name": "Envoi des courriels", "description": "...",
+      "status": "up",          // up | degraded | down | unknown (non rapporté depuis 5 min)
+      "updated_at": "...",
+      "uptime_30d": { "percent": 100, "up_s": ..., "total_s": ..., "down_s": 0 } }
+  ]
 }
 ```
 `percent` vaut `null` tant qu'il n'y a aucune donnée sur la période.
@@ -84,18 +95,29 @@ Lecture publique, CORS ouvert (`Access-Control-Allow-Origin: *`), cache 10 s.
 
 ## Webhook d'alerte
 
-`POST` JSON vers `ALERT_WEBHOOK_URL` à chaque changement d'état (2 essais, délai 5 s).
+`POST` JSON vers `ALERT_WEBHOOK_URL` à chaque changement d'état global d'un service
+(2 essais, délai 5 s) :
 
-En-têtes : `X-M2SG-Event: monitor.down | monitor.up` et
+| Événement | Quand |
+|---|---|
+| `monitor.down` | passe en panne (ouvre un incident) |
+| `monitor.degraded` | passe en dégradé (ou revient d'une panne en restant dégradé) |
+| `monitor.up` | redevient opérationnel |
+
+En-têtes : `X-M2SG-Event: <événement>` et
 `X-M2SG-Signature: sha256=<hmac_sha256_hex(ALERT_WEBHOOK_SECRET, corps brut)>`.
 
 ```json
 {
   "event": "monitor.up",
   "timestamp": "2026-11-15T22:53:34.864Z",
-  "monitor": { "id": "mail", "name": "Mail", "url": "https://mail.m2sg.com/healthz" },
-  "incident": { "id": 1, "started_at": "...", "ended_at": "...", "duration_s": 58, "error": "HTTP 503" },
-  "check": { "status_code": 200, "response_ms": 120, "error": null }
+  "monitor": { "id": "mail", "name": "Mail", "url": "https://mail.m2sg.com" },
+  "state": "up",
+  "previous_state": "down",
+  "incident": { "id": 1, "started_at": "...", "ended_at": "...", "duration_s": 58,
+                "error": "Envoi des courriels : En panne" },   // null si pas de panne liée
+  "check": { "status_code": 200, "response_ms": 120, "error": null },
+  "components": [ { "id": "sending", "name": "Envoi des courriels", "state": "up" } ]  // mail seulement
 }
 ```
 
@@ -118,6 +140,7 @@ function isValid(rawBody, header, secret) {
   Gardées **90 jours** (purge automatique chaque heure).
 - `daily_stats` : agrégats par jour (heure de Toronto), gardés **à vie** → uptime 1 an / depuis toujours.
 - `incidents` : début / fin de chaque panne.
+- `components` / `component_daily` : état actuel et agrégats journaliers des sous-services du mail.
 
 Pour ajouter un service : `lib/monitors.ts`.
 
