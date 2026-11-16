@@ -1,7 +1,8 @@
 import AutoRefresh from "./AutoRefresh";
 import { databaseUrl } from "@/lib/db";
-import { TIMEZONE } from "@/lib/monitors";
-import { getDailyBars, getStatuses, overall, type DayBar, type Uptime } from "@/lib/stats";
+import { ago, dateTimeFmt, dayFmt, duration, longDateTimeFmt, pct } from "@/lib/format";
+import { getMonitor } from "@/lib/monitors";
+import { getDailyBars, getIncidents, getStatuses, overall, type DayBar } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -19,36 +20,6 @@ const STATUS_TEXT = {
   unknown: "Inconnu",
 } as const;
 
-function pct(u: Uptime): string {
-  if (u.percent === null) return "—";
-  const v = u.percent;
-  const digits = v === 100 ? 0 : v >= 99 ? 3 : 2;
-  return (
-    new Intl.NumberFormat("fr-CA", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(
-      Math.floor(v * 10 ** digits) / 10 ** digits,
-    ) + " %"
-  );
-}
-
-function duration(s: number): string {
-  if (s < 60) return `${Math.round(s)} s`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  const rm = m % 60;
-  if (h < 24) return rm ? `${h} h ${rm} min` : `${h} h`;
-  const d = Math.floor(h / 24);
-  const rh = h % 24;
-  return rh ? `${d} j ${rh} h` : `${d} j`;
-}
-
-const dateTimeFmt = new Intl.DateTimeFormat("fr-CA", {
-  timeZone: TIMEZONE,
-  dateStyle: "medium",
-  timeStyle: "medium",
-});
-const dayFmt = new Intl.DateTimeFormat("fr-CA", { timeZone: "UTC", dateStyle: "medium" });
-
 function barClass(b: DayBar): string {
   if (b.percent === null) return "bar none";
   if (b.percent >= 100) return "bar ok";
@@ -60,7 +31,7 @@ function barClass(b: DayBar): string {
 function barTitle(b: DayBar): string {
   const d = dayFmt.format(new Date(b.day + "T12:00:00Z"));
   if (b.percent === null) return `${d} — aucune donnée`;
-  const p = pct({ percent: b.percent, up_s: 0, total_s: 0, down_s: 0 });
+  const p = pct({ percent: b.percent });
   return b.down_s > 0 ? `${d} — ${p} (${duration(b.down_s)} d'arrêt)` : `${d} — ${p}`;
 }
 
@@ -86,7 +57,12 @@ export default async function Page() {
       </main>
     );
   }
-  const [statuses, bars] = await Promise.all([getStatuses(), getDailyBars(90)]);
+  const [statuses, bars, [last]] = await Promise.all([
+    getStatuses(),
+    getDailyBars(90),
+    getIncidents({ limit: 1 }),
+  ]);
+  const lastMonitor = last ? getMonitor(last.monitor_id) : undefined;
   const global = overall(statuses);
 
   return (
@@ -101,6 +77,46 @@ export default async function Page() {
         <span className="dot" />
         {OVERALL_TEXT[global]}
       </div>
+
+      <section className={`last-incident ${last ? (last.ongoing ? "ongoing" : "resolved") : "none"}`}>
+        <div className="li-top">
+          <span className="li-kicker">Dernier incident</span>
+          <a href="/historique" className="li-link">
+            Voir tout l&apos;historique →
+          </a>
+        </div>
+        {last ? (
+          <>
+            <div className="li-title">
+              {lastMonitor?.name ?? last.monitor_id}{" "}
+              {last.ongoing ? "— en panne" : "— résolu"}
+            </div>
+            <div className="li-duration">
+              {last.ongoing ? `En cours depuis ${duration(last.duration_s)}` : `Durée : ${duration(last.duration_s)}`}
+            </div>
+            <div className="li-details">
+              <div>
+                <span>Début</span>
+                {longDateTimeFmt.format(new Date(last.started_at))}
+              </div>
+              <div>
+                <span>Fin</span>
+                {last.ended_at
+                  ? `${longDateTimeFmt.format(new Date(last.ended_at))} (${ago(last.ended_at)})`
+                  : "Toujours en cours"}
+              </div>
+              {last.error && (
+                <div>
+                  <span>Cause</span>
+                  {last.error}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="li-title">Aucun incident enregistré</div>
+        )}
+      </section>
 
       {statuses.map((s) => (
         <section key={s.id} className="card">
@@ -175,7 +191,7 @@ export default async function Page() {
 
       <footer>
         Vérification toutes les 60 s (toutes les 30 s pendant une panne) · Sous-services : disponibilité
-        sur 30 jours · API :{" "}
+        sur 30 jours · <a href="/historique">Historique des incidents</a> · API :{" "}
         <a href="/api/status">/api/status</a> · <a href="/api/incidents">/api/incidents</a>
       </footer>
     </main>

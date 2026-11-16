@@ -11,6 +11,8 @@ Page de statut + API pour **m2sg.com** et le **mail** (via `mail.m2sg.com/api/st
 - « Dégradé » compte comme disponible dans l'uptime ; seule une panne fait baisser le pourcentage.
 - Uptime sur **24 h / 30 jours / 1 an / depuis toujours**, pondéré par le temps.
 - Barre des 90 derniers jours (fuseau America/Toronto).
+- Le **dernier incident** est mis en avant sur la page principale ; l'**historique complet**
+  est sur `/historique` (groupé par mois, filtrable par service, 50 par page).
 - API JSON publique en lecture + webhook signé à chaque panne / rétablissement.
 
 ## Mise en ligne
@@ -83,9 +85,11 @@ Lecture publique, CORS ouvert (`Access-Control-Allow-Origin: *`), cache 10 s.
 `percent` vaut `null` tant qu'il n'y a aucune donnée sur la période.
 
 ### `GET /api/incidents?monitor=mail&limit=20`
-`monitor` optionnel, `limit` 1–100 (défaut 20). Plus récents d'abord.
+`monitor` optionnel, `limit` 1–100 (défaut 20), `offset` pour paginer. Plus récents d'abord.
 ```json
 {
+  "total": 61,
+  "offset": 0,
   "incidents": [
     { "id": 1, "monitor_id": "mail", "started_at": "...", "ended_at": "...",
       "duration_s": 58, "ongoing": false, "error": "HTTP 503" }

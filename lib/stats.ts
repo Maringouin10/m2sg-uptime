@@ -233,18 +233,31 @@ export async function getDailyBars(days = 90): Promise<Record<string, DayBar[]>>
   return out;
 }
 
-export async function getIncidents(opts: { monitor?: string; limit?: number } = {}): Promise<Incident[]> {
+export async function getIncidents(
+  opts: { monitor?: string; limit?: number; offset?: number } = {},
+): Promise<Incident[]> {
   await ensureSchema();
-  const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
+  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 20), 1), 100);
+  const offset = Math.max(Math.trunc(opts.offset ?? 0), 0);
   const sql = db();
   const rows = opts.monitor
     ? await sql<IncidentRow[]>`
         select id, monitor_id, started_at, ended_at, error from incidents
-        where monitor_id = ${opts.monitor} order by started_at desc limit ${limit}`
+        where monitor_id = ${opts.monitor}
+        order by started_at desc, id desc limit ${limit} offset ${offset}`
     : await sql<IncidentRow[]>`
         select id, monitor_id, started_at, ended_at, error from incidents
-        order by started_at desc limit ${limit}`;
+        order by started_at desc, id desc limit ${limit} offset ${offset}`;
   return rows.map(toIncident);
+}
+
+export async function countIncidents(monitor?: string): Promise<number> {
+  await ensureSchema();
+  const sql = db();
+  const [r] = monitor
+    ? await sql<{ n: string }[]>`select count(*) as n from incidents where monitor_id = ${monitor}`
+    : await sql<{ n: string }[]>`select count(*) as n from incidents`;
+  return Number(r.n);
 }
 
 export function overall(statuses: MonitorStatus[]): "up" | "degraded" | "down" | "unknown" {
