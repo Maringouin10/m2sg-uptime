@@ -157,6 +157,8 @@ export async function getStatuses(monitors: Monitor[] = MONITORS): Promise<Monit
       where c.monitor_id = any(${ids}) and c.updated_at > now() - interval '1 day'
       order by c.monitor_id, c.position`,
   ]);
+  const ignored = (monitorId: string, componentId: string) =>
+    getMonitor(monitorId)?.ignoreComponents?.includes(componentId) ?? false;
 
   return monitors.map((m) => {
     const last = lasts.find((r) => r.monitor_id === m.id);
@@ -189,7 +191,7 @@ export async function getStatuses(monitors: Monitor[] = MONITORS): Promise<Monit
       ...(m.type === "status-json"
         ? {
             components: comps
-              .filter((c) => c.monitor_id === m.id)
+              .filter((c) => c.monitor_id === m.id && !ignored(c.monitor_id, c.component_id))
               .map((c) => ({
                 id: c.component_id,
                 name: c.name,

@@ -28,6 +28,8 @@ export function normalizeState(v: unknown): State {
   return "down";
 }
 
+const RANK: Record<State, number> = { up: 0, degraded: 1, down: 2 };
+
 const STATE_FR: Record<State, string> = { up: "Opérationnel", degraded: "Dégradé", down: "En panne" };
 
 function parseStatusJson(body: string): { state: State; components: ComponentResult[] } | null {
@@ -76,8 +78,22 @@ export async function probe(monitor: Monitor): Promise<ProbeResult> {
     const httpOk = res.status >= 200 && res.status < 400;
 
     if (monitor.type === "status-json") {
-      const parsed = parseStatusJson(body);
-      if (parsed) {
+      const raw = parseStatusJson(body);
+      const ignored = new Set(monitor.ignoreComponents ?? []);
+      const parsed = raw && {
+        ...raw,
+        components: raw.components.filter((c) => !ignored.has(c.id)),
+      };
+      if (parsed && raw) {
+        // Avec des sous-services, l'état global = le pire d'entre eux (hors ignorés),
+        // car le `status` global du serveur tient compte des sous-services ignorés.
+        // Sans sous-services, on garde le `status` global.
+        if (raw.components.length > 0) {
+          parsed.state = parsed.components.reduce<State>(
+            (worst, c) => (RANK[c.state] > RANK[worst] ? c.state : worst),
+            "up",
+          );
+        }
         const bad = parsed.components.filter((c) => c.state !== "up");
         const error =
           parsed.state === "up" && bad.length === 0

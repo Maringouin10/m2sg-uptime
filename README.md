@@ -8,6 +8,9 @@ Page de statut + API pour **m2sg.com** et le **mail** (via `mail.m2sg.com/api/st
   `degraded`/`partial`/`warning`/`maintenance` → dégradé ; autre valeur, erreur réseau, délai
   ou réponse illisible → panne). Les 8 sous-services sont affichés avec leur état et leur
   disponibilité sur 30 jours. Leurs messages détaillés ne sont **ni stockés ni affichés**.
+  L'état du mail est recalculé comme le pire des sous-services, **en ignorant
+  « Accès depuis Internet » (`internet`)** : si le moniteur joint l'endpoint, le mail est
+  joignable, et c'est le moniteur qui fait foi (réglage `ignoreComponents` dans `lib/monitors.ts`).
 - « Dégradé » compte comme disponible dans l'uptime ; seule une panne fait baisser le pourcentage.
 - Uptime sur **24 h / 30 jours / 1 an / depuis toujours**, pondéré par le temps.
 - Barre des 90 derniers jours (fuseau America/Toronto).

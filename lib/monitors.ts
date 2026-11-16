@@ -12,6 +12,11 @@ export type Monitor = {
    * "status-json" : endpoint qui renvoie { status, services: [{ id, name, description, status }] }.
    */
   type: "http" | "status-json";
+  /**
+   * Sous-services ignorés (status-json) : ni comptés dans l'état, ni affichés, ni stockés.
+   * Utile quand le moniteur mesure déjà la même chose lui-même.
+   */
+  ignoreComponents?: string[];
 };
 
 export type State = "up" | "degraded" | "down";
@@ -24,6 +29,9 @@ export const MONITORS: Monitor[] = [
     url: "https://mail.m2sg.com/api/status",
     displayUrl: "https://mail.m2sg.com",
     type: "status-json",
+    // « Accès depuis Internet » : si on joint l'endpoint, le mail est joignable depuis
+    // Internet. Ce moniteur fait foi, on ignore donc l'avis du serveur sur ce point.
+    ignoreComponents: ["internet"],
   },
 ];
 
