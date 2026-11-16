@@ -3,7 +3,7 @@
 Page de statut + API pour **m2sg.com** et le **mail** (via `mail.m2sg.com/api/status`), hébergée sur Vercel.
 
 - Vérification toutes les **60 s** ; pendant une panne, une vérif supplémentaire **30 s** plus tard.
-- Site web : panne = erreur réseau, délai > 10 s, ou code HTTP hors 200-399 (redirections suivies).
+- Site web : panne = erreur réseau, délai > 20 s, ou code HTTP hors 200-399 (redirections suivies).
 - Mail : l'état vient du champ `status` de `mail.m2sg.com/api/status` (`up` → opérationnel ;
   `degraded`/`partial`/`warning`/`maintenance` → dégradé ; autre valeur, erreur réseau, délai
   ou réponse illisible → panne). Les 8 sous-services sont affichés avec leur état et leur

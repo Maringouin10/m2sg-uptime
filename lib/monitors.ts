@@ -30,7 +30,7 @@ export const MONITORS: Monitor[] = [
 export const TIMEZONE = "America/Toronto";
 
 /** Délai max d'une vérification avant de la considérer en échec. */
-export const CHECK_TIMEOUT_MS = 10_000;
+export const CHECK_TIMEOUT_MS = 20_000;
 /** Délai entre deux vérifications quand un service est en panne. */
 export const DOWN_RECHECK_DELAY_MS = 30_000;
 /** Intervalle normal (appel de cron-job.org). */

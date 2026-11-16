@@ -6,7 +6,8 @@ import { DOWN_RECHECK_DELAY_MS, MONITORS } from "@/lib/monitors";
 
 export const dynamic = "force-dynamic";
 // La re-vérification à +30 s en cas de panne tourne après la réponse (after()).
-export const maxDuration = 60;
+// Pire cas : vérif (20 s) + attente jusqu'à +30 s + re-vérif (20 s) ≈ 50 s, plus la base.
+export const maxDuration = 90;
 
 function authorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
@@ -33,6 +34,7 @@ async function handler(req: Request) {
     return Response.json({ error: "Base de données non configurée (DATABASE_URL)" }, { status: 503 });
   }
   await ensureSchema();
+  const startedAt = Date.now();
   const results = await Promise.all(MONITORS.map((m) => runCheck(m)));
 
   const down = MONITORS.filter((m) => results.find((r) => r.monitor === m.id && r.state === "down"));
@@ -41,7 +43,8 @@ async function handler(req: Request) {
   if (down.length > 0 || purge) {
     after(async () => {
       if (down.length > 0) {
-        await sleep(DOWN_RECHECK_DELAY_MS);
+        // 30 s après le DÉBUT de la première vérif (sinon un timeout de 20 s décalerait le rythme).
+        await sleep(Math.max(0, DOWN_RECHECK_DELAY_MS - (Date.now() - startedAt)));
         await Promise.all(down.map((m) => runCheck(m).catch((e) => console.error("[recheck]", m.id, e))));
       }
       if (purge) await purgeOldChecks().catch((e) => console.error("[purge]", e));

@@ -53,7 +53,7 @@ function parseStatusJson(body: string): { state: State; components: ComponentRes
 }
 
 /**
- * "http" : panne = erreur réseau, délai > 10 s, ou code HTTP hors 200-399.
+ * "http" : panne = erreur réseau, délai > 20 s, ou code HTTP hors 200-399.
  * "status-json" : l'état vient du champ `status` du JSON (même si le code HTTP est une erreur) ;
  * si la réponse n'est pas un JSON de statut lisible, on applique la règle "http"
  * et une réponse illisible avec un code OK compte comme panne.
